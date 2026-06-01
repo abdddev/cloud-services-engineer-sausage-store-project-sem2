@@ -34,33 +34,27 @@ spec:
           image: {{ .Values.image }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           env:
-            - name: SPRING_DATASOURCE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ .Release.Name }}-{{ .Chart.Name }}-conf
-                  key: postgres_uri
-            - name: SPRING_DATASOURCE_USERNAME
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ .Release.Name }}-{{ .Chart.Name }}-conf
-                  key: postgres_user
-            - name: SPRING_DATASOURCE_PASSWORD
+            # Конфиг приходит из Vault через spring-cloud-vault:
+            # spring.datasource.url/username/password, spring.data.mongodb.uri
+            - name: SPRING_CONFIG_IMPORT
+              value: {{ .Values.global.vault.spring.import | quote }}
+            - name: SPRING_CLOUD_VAULT_KV_ENABLED
+              value: "true"
+            - name: SPRING_CLOUD_VAULT_URI
+              value: {{ .Values.global.vault.addr | quote }}
+            - name: SPRING_CLOUD_VAULT_AUTHENTICATION
+              value: "TOKEN"
+            - name: SPRING_CLOUD_VAULT_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-{{ .Chart.Name }}-secret
-                  key: postgres_password
+                  name: {{ .Release.Name }}-{{ .Chart.Name }}-vault-token
+                  key: token
             - name: REPORT_PATH
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ .Release.Name }}-{{ .Chart.Name }}-conf
-                  key: report_path
+              value: {{ .Values.env.reportPath | quote }}
             - name: LOG_PATH
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ .Release.Name }}-{{ .Chart.Name }}-conf
-                  key: log_path
+              value: {{ .Values.env.logPath | quote }}
           resources:
-{{ toYaml .Values.resources | indent 12 }} 
+{{ toYaml .Values.resources | indent 12 }}
           ports:
             - name: {{ .Chart.Name }}
               containerPort: {{ .Values.containerPort }}
@@ -68,19 +62,13 @@ spec:
 {{ toYaml .Values.readinessProbe | indent 12 }}
           livenessProbe:
 {{ toYaml .Values.livenessProbe | indent 12 }}
+          volumeMounts:
+            - name: {{ .Release.Name }}-{{ .Chart.Name }}-reports
+              mountPath: {{ .Values.env.reportPath }}
       volumes:
-      - name: {{ .Release.Name }}-{{ .Chart.Name }}-conf
-        configMap:
-          name: {{ .Release.Name }}-{{ .Chart.Name }}-conf
-          items:
-            - key: postgres_uri
-              path: postgres_uri
-            - key: postgres_user
-              path: postgres_user
-            - key: report_path
-              path: report_path
-            - key: log_path
-              path: log_path
+        - name: {{ .Release.Name }}-{{ .Chart.Name }}-reports
+          emptyDir:
+            sizeLimit: 256Mi
 ---
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler

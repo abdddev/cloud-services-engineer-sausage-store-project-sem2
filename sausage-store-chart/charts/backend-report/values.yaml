@@ -6,9 +6,6 @@ revisionHistoryLimit: 15
 image: abludenov/sausage-backend-report:latest
 containerPort: 8080
 health: "/api/v1/health"
-service:
-  port: 8080
-mongodbUri: "mongodb://root:rootpassword@mongodb:27017/reports?authSource=admin"
 resources:
   requests:
     memory: "64Mi"

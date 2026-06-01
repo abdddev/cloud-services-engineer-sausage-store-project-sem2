@@ -14,6 +14,7 @@ metadata:
     app.kubernetes.io/part-of: {{ .Release.Name }}
 spec:
   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  # replicas намеренно не задаётся: числом реплик управляет HPA
   strategy:
     type: Recreate
   selector:
@@ -24,21 +25,38 @@ spec:
       labels:
         app: {{ .Release.Name }}-{{ .Chart.Name }}
     spec:
+      initContainers:
+        # Достаёт креды Mongo из Vault и пишет строку подключения в файл env,
+        # который основной контейнер засорсит в переменную окружения DB.
+        - command:
+            - sh
+            - -c
+            - |
+              set -e
+              vault status
+              printf 'export DB="mongodb://%s:%s@%s:%s/%s"\n' \
+                "$(vault kv get -mount=kv -field=spring.data.mongodb.username sausage-store)" \
+                "$(vault kv get -mount=kv -field=spring.data.mongodb.password sausage-store)" \
+                "$(vault kv get -mount=kv -field=spring.data.mongodb.host sausage-store)" \
+                "$(vault kv get -mount=kv -field=spring.data.mongodb.port sausage-store)" \
+                "$(vault kv get -mount=kv -field=spring.data.mongodb.database sausage-store)" \
+                > {{ .Values.global.secrets }}/env
+          {{- include "vault.init.container" . | nindent 10 }}
       containers:
         - name: {{ .Chart.Name }}
           image: {{ .Values.image }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default "Always" }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              . {{ .Values.global.secrets }}/env
+              exec /app/main
           env:
             - name: PORT
               valueFrom:
                 configMapKeyRef:
                   name: {{ .Release.Name }}-{{ .Chart.Name }}-conf
                   key: port
-            - name: DB
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-{{ .Chart.Name }}-secret
-                  key: db
           resources:
 {{ toYaml .Values.resources | indent 12 }}
           ports:
@@ -56,3 +74,10 @@ spec:
               port: {{ .Values.containerPort }}
             initialDelaySeconds: 15
             periodSeconds: 20
+          volumeMounts:
+            - name: {{ .Values.global.vault.volume }}
+              mountPath: {{ .Values.global.secrets }}
+              readOnly: true
+      volumes:
+        - name: {{ .Values.global.vault.volume }}
+          emptyDir: {}

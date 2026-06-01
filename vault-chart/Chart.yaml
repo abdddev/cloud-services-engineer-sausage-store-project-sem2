@@ -1,0 +1,8 @@
+---
+apiVersion: v2
+type: application
+name: vault
+description: Single-node HashiCorp Vault
+
+version: 0.1.0
+appVersion: "1.21.0"

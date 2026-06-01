@@ -8,41 +8,77 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
   annotations:
-    helm.sh/hook: "post-install"
-    helm.sh/hook-weight: "5"
-    helm.sh/hook-delete-policy: hook-succeeded
+    helm.sh/hook: "post-install,post-upgrade"
+    helm.sh/hook-weight: "10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
+  backoffLimit: 5
   template:
     metadata:
       labels:
         app.kubernetes.io/name: mongodb-init
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: mongodb-init
-          image: mongo:7.0
-          command:
-            - mongosh
-            - "--host"
-            - "mongodb"
-            - "--port"
-            - "27017"
-            - "--username"
-            - {{ .Values.mongodb.env.MONGO_INITDB_ROOT_USERNAME | quote }}
-            - "--password"
-            - {{ .Values.mongodb.env.MONGO_INITDB_ROOT_PASSWORD | quote }}
-            - "--authenticationDatabase"
-            - "admin"
-            - "--eval"
+      restartPolicy: Never
+      initContainers:
+        # Достаёт из Vault root-креды и креды прикладного юзера для backend-report.
+        - command:
+            - sh
+            - -c
             - |
-              db = db.getSiblingDB('reports');
-              db.createUser({
-                user: 'reporter',
-                pwd: 'reporterpassword',
-                roles: [{ role: 'readWrite', db: 'reports' }]
-              });
-              print('MongoDB init done');
+              set -e
+              vault status
+              vault kv get -mount=kv -field=mongodb.init.username        sausage-store > {{ .Values.global.secrets }}/mongo-root-username
+              vault kv get -mount=kv -field=mongodb.init.password        sausage-store > {{ .Values.global.secrets }}/mongo-root-password
+              vault kv get -mount=kv -field=spring.data.mongodb.database  sausage-store > {{ .Values.global.secrets }}/mongo-database
+              vault kv get -mount=kv -field=spring.data.mongodb.username  sausage-store > {{ .Values.global.secrets }}/mongo-username
+              vault kv get -mount=kv -field=spring.data.mongodb.password  sausage-store > {{ .Values.global.secrets }}/mongo-password
+          {{- include "vault.init.container" . | nindent 10 }}
+      containers:
+        - name: create-user-and-database
+          image: mongo:7.0
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              SECRETS="{{ .Values.global.secrets }}"
+              ROOT_USER=$(cat "$SECRETS/mongo-root-username")
+              ROOT_PASS=$(cat "$SECRETS/mongo-root-password")
+              DB=$(cat "$SECRETS/mongo-database")
+              APP_USER=$(cat "$SECRETS/mongo-username")
+              APP_PASS=$(cat "$SECRETS/mongo-password")
+              HOST="mongodb"
+              PORT="{{ .Values.mongodb.containerPort }}"
+
+              ready=false
+              for i in $(seq 1 60); do
+                if mongosh --host "$HOST" --port "$PORT" -u "$ROOT_USER" -p "$ROOT_PASS" \
+                    --authenticationDatabase admin --quiet --eval 'db.adminCommand({ ping: 1 })'; then
+                  ready=true
+                  break
+                fi
+                echo "waiting for mongodb... ($i/60)"
+                sleep 5
+              done
+              if [ "$ready" != true ]; then
+                echo "mongodb not ready after auth ping to $HOST:$PORT" >&2
+                exit 1
+              fi
+
+              mongosh --host "$HOST" --port "$PORT" \
+                -u "$ROOT_USER" -p "$ROOT_PASS" --authenticationDatabase admin --quiet <<EOF
+                  const target = db.getSiblingDB('$DB');
+                  if (!target.getUser('$APP_USER')) {
+                    target.createUser({
+                      user: '$APP_USER',
+                      pwd: '$APP_PASS',
+                      roles: [{ role: 'readWrite', db: '$DB' }]
+                    });
+                    print('user $APP_USER created in $DB');
+                  } else {
+                    print('user $APP_USER already exists');
+                  }
+              EOF
           resources:
             requests:
               memory: "64Mi"
@@ -50,3 +86,10 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "200m"
+          volumeMounts:
+            - name: {{ .Values.global.vault.volume }}
+              mountPath: {{ .Values.global.secrets }}
+              readOnly: true
+      volumes:
+        - name: {{ .Values.global.vault.volume }}
+          emptyDir: {}

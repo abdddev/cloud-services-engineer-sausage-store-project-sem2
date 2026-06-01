@@ -1,9 +1,23 @@
 global:
   imagePullPolicy: Always
-  ###vault:
-  ###  host: ip
-  ###  name: vault
-  ###  vaultToken: someToken
+  # Путь, куда vault-init-контейнеры пишут секреты, а основные контейнеры их читают
+  secrets: "/run/secrets"
+  vault:
+    image: "hashicorp/vault:1.21.0"
+    addr: "http://vault:8200"
+    spring:
+      import: "vault://kv/sausage-store"
+    # Токен приходит из CI: --set global.vault.token=${VAULT_TOKEN}
+    token: ""
+    volume: "vault-secrets"
+    resources:
+      container:
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+        limits:
+          cpu: "100m"
+          memory: "128Mi"
 
 
 frontend:
@@ -89,9 +103,6 @@ backend-report:
   image: abludenov/sausage-backend-report:latest
   containerPort: 8080
   health: "/api/v1/health"
-  service:
-    port: 8080
-  mongodbUri: "mongodb://root:rootpassword@mongodb:27017/reports?authSource=admin"
   resources:
     requests:
       memory: "64Mi"
@@ -105,13 +116,11 @@ backend-report:
     targetCPUUtilizationPercentage: 75
 
 infra:
+  # Креды БД больше не хранятся здесь — они приходят из Vault
+  # (postgres/mongo читают их через *_FILE из vault-init-контейнеров).
   postgresql:
     containerPort: 5432
     storage: 1Gi
-    env:
-      POSTGRES_DB: sausage-store
-      POSTGRES_USER: store
-      POSTGRES_PASSWORD: storepassword
     resources:
       requests:
         memory: "256Mi"
@@ -120,7 +129,4 @@ infra:
         memory: "512Mi"
         cpu: "500m"
   mongodb:
-    env:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: rootpassword
     containerPort: 27017

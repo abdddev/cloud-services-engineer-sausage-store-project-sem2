@@ -108,6 +108,7 @@ jobs:
           run: |
             helm upgrade --install sausage-store nexus/sausage-store \
               --namespace $SAUSAGE_STORE_NAMESPACE \
+              --set global.vault.token="$VAULT_TOKEN" \
               --history-max 2 \
               --wait \
               --timeout 5m0s

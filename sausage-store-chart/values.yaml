@@ -7,7 +7,6 @@ global:
 
 
 frontend:
-### В чарте frontend отсутствуют некоторые важные файлы. Поймите какие и опишите их.
   replicas: 1
   revisionHistoryLimit: 15
   strategy:
@@ -15,7 +14,8 @@ frontend:
   service:
     port: 80
   ingress:
-    host: YOUR_STUDENT_HOSTNAME.students-projects.ru # Корректный домен будет указан в задании
+    host: front-r-devops-magistracy-project-2sem-792101529.2sem.students-projects.ru
+    tlsSecret: 2sem-students-projects-wildcard-secret
     path: /
     pathType: Prefix
   containerPort: 80

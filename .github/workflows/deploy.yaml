@@ -9,7 +9,7 @@ env:
   NEXUS_HELM_REPO: ${{ secrets.NEXUS_HELM_REPO }}
   NEXUS_HELM_REPO_USER: ${{ secrets.NEXUS_HELM_REPO_USER }}
   NEXUS_HELM_REPO_PASSWORD: ${{ secrets.NEXUS_HELM_REPO_PASSWORD }}
-  SAUSAGE_STORE_NAMESPACE: YOUR_NAMESPACE
+  SAUSAGE_STORE_NAMESPACE: r-devops-magistracy-project-2sem-792101529
   KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
   VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
 
@@ -70,7 +70,19 @@ jobs:
       needs: build_and_push_to_docker_hub
 
       steps:
-      #### Опишите необходимые шаги
+        - name: Check out the repo
+          uses: actions/checkout@v3
+        - name: Install Helm
+          uses: azure/setup-helm@v3
+          with:
+            version: latest
+        - name: Package Helm chart
+          run: helm package sausage-store-chart/
+        - name: Push chart to Nexus
+          run: |
+            curl -u $NEXUS_HELM_REPO_USER:$NEXUS_HELM_REPO_PASSWORD \
+              --upload-file sausage-store-*.tgz \
+              $NEXUS_HELM_REPO/
 
   # Деплоим приложения в кластер Kubernetes с помощью helm-чарт
   deploy_helm_chart_to_kubernetes:
@@ -79,4 +91,25 @@ jobs:
       needs: add_helm_chart_to_nexus
 
       steps:
-      #### Опишите необходимые шаги
+        - name: Install Helm
+          uses: azure/setup-helm@v3
+          with:
+            version: latest
+        - name: Add Nexus Helm repo
+          run: |
+            helm repo add nexus $NEXUS_HELM_REPO \
+              --username $NEXUS_HELM_REPO_USER \
+              --password $NEXUS_HELM_REPO_PASSWORD
+            helm repo update
+        - name: Set up kubeconfig
+          run: |
+            mkdir -p ~/.kube
+            echo "$KUBE_CONFIG" > ~/.kube/config
+            chmod 600 ~/.kube/config
+        - name: Deploy to Kubernetes
+          run: |
+            helm upgrade --install sausage-store nexus/sausage-store \
+              --namespace $SAUSAGE_STORE_NAMESPACE \
+              --create-namespace \
+              --wait \
+              --timeout 5m0s

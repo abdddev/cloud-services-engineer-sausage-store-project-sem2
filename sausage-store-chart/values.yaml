@@ -59,6 +59,13 @@ backend:
       memory: "512Mi"
       cpu: "1"
   containerPort: 8080
+  readinessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8080
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    failureThreshold: 3
   livenessProbe:
     httpGet:
       path: /actuator/health
@@ -81,6 +88,7 @@ backend-report:
   revisionHistoryLimit: 15
   image: abludenov/sausage-backend-report:latest
   containerPort: 8080
+  health: "/api/v1/health"
   service:
     port: 8080
   mongodbUri: "mongodb://root:rootpassword@mongodb:27017/reports?authSource=admin"

@@ -46,8 +46,8 @@ spec:
                   key: postgres_user
             - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
-                configMapKeyRef:
-                  name: {{ .Release.Name }}-{{ .Chart.Name }}-conf
+                secretKeyRef:
+                  name: {{ .Release.Name }}-{{ .Chart.Name }}-secret
                   key: postgres_password
             - name: REPORT_PATH
               valueFrom:
@@ -64,8 +64,10 @@ spec:
           ports:
             - name: {{ .Chart.Name }}
               containerPort: {{ .Values.containerPort }}
+          readinessProbe:
+{{ toYaml .Values.readinessProbe | indent 12 }}
           livenessProbe:
-{{ toYaml .Values.livenessProbe | indent 12 }} 
+{{ toYaml .Values.livenessProbe | indent 12 }}
       volumes:
       - name: {{ .Release.Name }}-{{ .Chart.Name }}-conf
         configMap:
@@ -75,8 +77,6 @@ spec:
               path: postgres_uri
             - key: postgres_user
               path: postgres_user
-            - key: postgres_password
-              path: postgres_password
             - key: report_path
               path: report_path
             - key: log_path

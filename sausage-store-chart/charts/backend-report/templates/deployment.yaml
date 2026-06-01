@@ -14,7 +14,6 @@ metadata:
     app.kubernetes.io/part-of: {{ .Release.Name }}
 spec:
   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
-  replicas: {{ .Values.replicas }}
   strategy:
     type: Recreate
   selector:
@@ -45,3 +44,15 @@ spec:
           ports:
             - name: {{ .Chart.Name }}
               containerPort: {{ .Values.containerPort }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.health }}
+              port: {{ .Values.containerPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.health }}
+              port: {{ .Values.containerPort }}
+            initialDelaySeconds: 15
+            periodSeconds: 20

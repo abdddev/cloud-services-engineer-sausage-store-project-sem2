@@ -63,7 +63,6 @@ jobs:
             context: ./backend-report/
             push: true
             tags: abludenov/sausage-backend-report:latest
-  # Упаковываем helm-чарт и пушим его в Nexus
   add_helm_chart_to_nexus:
       name: Add Helm Chart To Nexus
       runs-on: ubuntu-latest
@@ -84,7 +83,6 @@ jobs:
               --upload-file sausage-store-*.tgz \
               $NEXUS_HELM_REPO/
 
-  # Деплоим приложения в кластер Kubernetes с помощью helm-чарт
   deploy_helm_chart_to_kubernetes:
       name: Deploy Helm Chart To Kubernetes
       runs-on: ubuntu-latest
